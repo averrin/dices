@@ -97,34 +97,19 @@ func CreateDicePool(def string) *DicePool {
 
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
-//	var def string
-//	var match bool
 	pattern := `\dd\d+([\+-]\d+)?`
-//	for {
-//		fmt.Print("Roll def: ")
-//		fmt.Scan(&def)
-//		match, _ = regexp.MatchString(pattern, def)
-//		for !match {
-//			fmt.Print("Roll def: ")
-//			fmt.Scan(&def)
-//			match, _ = regexp.MatchString(pattern, def)
-//		}
-//		p := CreateDicePool(def)
-//		fmt.Println(p.Roll())
-//	}
 	fmt.Println("Started")
 	m := martini.Classic()
 	m.Use(render.Renderer(render.Options{
 		Directory: "templates",
 		Extensions: []string{".tmpl", ".html"},
 	}))
+	m.Use(martini.Static("static", martini.StaticOptions{Prefix: "static"}))
 	session, err := mgo.Dial("localhost")
 	if err != nil {
 		panic(err)
 	}
 	defer session.Close()
-
-	// Optional. Switch the session to a monotonic behavior.
 	session.SetMode(mgo.Monotonic, true)
 
 	c := session.DB("test").C("rolls")
@@ -140,10 +125,10 @@ func main() {
 		}
 	})
 	m.Get("/rolls", func(r render.Render) {
-			var rolls []RollRecord
-			c.Find(bson.M{}).Iter().All(&rolls)
-			fmt.Println(rolls)
-			r.HTML(200, "rolls", rolls)
-		})
+		var rolls []RollRecord
+		c.Find(bson.M{}).Iter().All(&rolls)
+		fmt.Println(rolls)
+		r.HTML(200, "rolls", rolls)
+	})
 	m.Run()
 }
