@@ -1,0 +1,19 @@
+<ul id="rolls">
+{{range .}}
+    <li>{{.DiceDef}} = {{.Roll}}</li>
+{{end}}
+</ul>
+
+<script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
+<input type="text" id="def"/>
+<input type="button" value="Roll!" id="roll"/>
+
+<script>
+    $("#roll").on("click", function(ev){
+        ev.preventDefault()
+        var def = $("#def").val()
+        $.get("/roll/" + def, function(data){
+            $("#rolls").append("<li>"+def+" = "+data+"</li>")
+        })
+    })
+</script>
