@@ -4,8 +4,6 @@ import (
 	"strings"
 	"math/rand"
 	"regexp"
-	"log"
-	"time"
 	"strconv"
 )
 

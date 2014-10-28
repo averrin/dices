@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp"
-	"strconv"
 	"time"
     "github.com/go-martini/martini"
 	"gopkg.in/mgo.v2"
@@ -13,6 +12,9 @@ import (
 	"github.com/martini-contrib/render"
 	"github.com/gorilla/websocket"
 	"dices"
+	"net/http"
+	"ws_helpers"
+	"encoding/json"
 )
 
 type RollRecord struct {
@@ -21,13 +23,16 @@ type RollRecord struct {
 	Timestamp time.Time
 }
 
-func CreateRollRecord(pool *DicePool, c *mgo.Collection) {
-	record := RollRecord{DiceDef: pool.DiceDef, Roll: pool.LastRoll, Timestamp: time.Now()}
+func CreateRollRecord(pool *dices.DicePool, c *mgo.Collection) *RollRecord {
+	record := new(RollRecord)
+	record.DiceDef = pool.DiceDef
+	record.Roll = pool.LastRoll
+	record.Timestamp = time.Now()
 	err := c.Insert(&record)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return
+	return record
 }
 
 
@@ -49,22 +54,48 @@ func main() {
 	session.SetMode(mgo.Monotonic, true)
 
 	c := session.DB("test").C("rolls")
-	m.Get("/roll/:def", func(params martini.Params) (int, string) {
-		match, _ := regexp.MatchString(pattern, params["def"])
-		if match {
-			p := CreateDicePool(params["def"])
-			roll := p.Roll()
-			CreateRollRecord(p, c)
-			return 200, strconv.Itoa(roll)
-		} else {
-			return 403, "Wrong format!"
-		}
-	})
 	m.Get("/rolls", func(r render.Render) {
 		var rolls []RollRecord
 		c.Find(bson.M{}).Iter().All(&rolls)
 		fmt.Println(rolls)
 		r.HTML(200, "rolls", rolls)
 	})
+	m.Get("/sock", func(w http.ResponseWriter, r *http.Request) {
+			log.Println(ws_helpers.ActiveClients)
+			ws, err := websocket.Upgrade(w, r, nil, 1024, 1024)
+			if _, ok := err.(websocket.HandshakeError); ok {
+				http.Error(w, "Not a websocket handshake", 400)
+				return
+			} else if err != nil {
+				log.Println(err)
+				return
+			}
+			client := ws.RemoteAddr()
+			sockCli := ws_helpers.ClientConn{ws, client}
+			ws_helpers.AddClient(sockCli)
+			var ret []byte;
+
+			for {
+				log.Println(len(ws_helpers.ActiveClients), ws_helpers.ActiveClients)
+				messageType, p, err := ws.ReadMessage()
+				def := string(p)
+				if err != nil {
+					ws_helpers.DeleteClient(sockCli)
+					log.Println("bye")
+					log.Println(err)
+					return
+				}
+				match, _ := regexp.MatchString(pattern, def)
+				if match {
+					p := dices.CreateDicePool(def)
+					p.Roll()
+					r := CreateRollRecord(p, c)
+					ret, err = json.Marshal(r)
+				} else {
+					ret = []byte("Wrong format!")
+				}
+				ws_helpers.BroadcastMessage(messageType, ret)
+			}
+		})
 	m.Run()
 }

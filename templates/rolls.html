@@ -9,11 +9,19 @@
 <input type="button" value="Roll!" id="roll"/>
 
 <script>
+    
+    var c=new WebSocket('ws://localhost:3000/sock');
+    c.onopen = function(){
+      c.onmessage = function(response){
+        var data = JSON.parse(response.data);
+        console.log(data);
+        $("#rolls").append("<li>"+data.DiceDef+" = "+data.Roll+"</li>")
+      };
+    }
     $("#roll").on("click", function(ev){
         ev.preventDefault()
         var def = $("#def").val()
-        $.get("/roll/" + def, function(data){
-            $("#rolls").append("<li>"+def+" = "+data+"</li>")
-        })
+        c.send(def);
+        $("#def").val('')
     })
 </script>
