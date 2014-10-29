@@ -19,9 +19,10 @@ import (
 
 
 type RollRecord struct {
-	DiceDef 	string		`json:"dice_def"`
-	Roll 		int			`json:"roll"`
-	Timestamp 	time.Time 	`json:"timestamp"`
+	DiceDef 	string			`json:"dice_def"`
+	Roll 		int				`json:"roll"`
+	Timestamp 	time.Time 		`json:"timestamp"`
+	Id      	bson.ObjectId 	`json:"id" bson:"_id,omitempty"`
 }
 
 func CreateRollRecord(pool *dices.DicePool, c *mgo.Collection) *RollRecord {
@@ -36,8 +37,24 @@ func CreateRollRecord(pool *dices.DicePool, c *mgo.Collection) *RollRecord {
 	return record
 }
 
+type Message struct {
+	Type string
+	Message string
+}
+
+func SendError(ws *websocket.Conn, messageType int, error string) {
+	r := struct {
+			Type string
+			Message string
+		}{"error", error}
+	ret, _ := json.Marshal(r)
+	if err := ws.WriteMessage(messageType, ret); err != nil {
+		return
+	}	
+}
+
 func WSHandler(w http.ResponseWriter, r *http.Request, c *mgo.Collection) {
-	log.Println(ws_helpers.ActiveClients)
+
 	ws, err := websocket.Upgrade(w, r, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)
@@ -49,39 +66,47 @@ func WSHandler(w http.ResponseWriter, r *http.Request, c *mgo.Collection) {
 	client := ws.RemoteAddr()
 	pattern := `\dd\d+([\+-]\d+)?`
 	sockCli := ws_helpers.ClientConn{ws, client}
+	message := new(Message)
 	ws_helpers.AddClient(sockCli)
-
+	
 	for {
 		var ret []byte;
 		log.Println(len(ws_helpers.ActiveClients), ws_helpers.ActiveClients)
-		messageType, p, err := ws.ReadMessage()
-		def := string(p)
+		messageType, msg, err := ws.ReadMessage()
 		if err != nil {
 			ws_helpers.DeleteClient(sockCli)
 			log.Println("bye")
 			log.Println(err)
 			return
 		}
-		match, _ := regexp.MatchString(pattern, def)
-		if match {
-			p := dices.CreateDicePool(def)
-			p.Roll()
-			r := struct {
-					Type string
-					Message *RollRecord
-				}{"roll", CreateRollRecord(p, c)}
-			ret, err = json.Marshal(r)
-			ws_helpers.BroadcastMessage(messageType, ret)
-		} else {
-			r := struct {
-					Type string
-					Message string
-				}{"error", "Wrong format!"}
-			ret, err = json.Marshal(r)
-			if err := ws.WriteMessage(messageType, ret); err != nil {
+		err = json.Unmarshal(msg, &message)
+		
+		switch message.Type{
+		case "roll":
+			match, _ := regexp.MatchString(pattern, message.Message)
+			if match {
+				p := dices.CreateDicePool(message.Message)
+				p.Roll()
+				r := struct {
+						Type string
+						Message *RollRecord
+					}{"roll", CreateRollRecord(p, c)}
+				ret, err = json.Marshal(r)
+				ws_helpers.BroadcastMessage(messageType, ret)
+			} else {
+				SendError(ws, messageType, "Wrong format!")
+			}
+		case "del_record":
+			err := c.RemoveId(bson.ObjectIdHex(message.Message))
+			if err != nil {
+				log.Println(err)
 				return
 			}
-		}
+			ws_helpers.BroadcastMessage(messageType, msg)
+			
+		default:
+			SendError(ws, messageType, "Unknown command")
+		}	
 	}
 }
 

@@ -1,6 +1,6 @@
 <ul id="rolls">
 {{range .}}
-    <li>{{.DiceDef}} = {{.Roll}}</li>
+    <li>{{.DiceDef}} = {{.Roll}} <a href="#" data-id="{{.Id.Hex}}" class="del">x</a></li>
 {{end}}
 </ul>
 
@@ -23,12 +23,20 @@
             var err = data.Message;
             alert(err)
         }
+        if (data.Type == "del_record"){
+            var record = data.Message;
+            $('.del[data-id="'+record+'"]').parent().remove()
+        }
       };
     }
     $("#roll").on("click", function(ev){
         ev.preventDefault()
         var def = $("#def").val()
-        c.send(def);
+        c.send(JSON.stringify({"Type": "roll", "Message": def}));
         $("#def").val('')
+    })
+    $(".del").on("click", function(ev){
+          ev.preventDefault()
+          c.send(JSON.stringify({"Type": "del_record", "Message": $(this).data("id")}));
     })
 </script>
