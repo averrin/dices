@@ -15,7 +15,14 @@
       c.onmessage = function(response){
         var data = JSON.parse(response.data);
         console.log(data);
-        $("#rolls").append("<li>"+data.DiceDef+" = "+data.Roll+"</li>")
+        if (data.Type == "roll"){
+            var dice = data.Message;
+            $("#rolls").append("<li>"+dice.dice_def+" = "+dice.roll+"</li>")
+        }
+        if (data.Type == "error"){
+            var err = data.Message;
+            alert(err)
+        }
       };
     }
     $("#roll").on("click", function(ev){
